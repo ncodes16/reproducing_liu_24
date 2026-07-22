@@ -1,14 +1,15 @@
 
-
+import sys
 import numpy as np
 import pandas as pd
-rng = np.random.default_rng(seed=1234)
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import dedalus.public as d3
 import logging
 logger = logging.getLogger(__name__)
 
+seed = 1
+rng = np.random.default_rng(seed=seed)
 
 # Official Parula colormap RGB values
 parula_colors = [
@@ -84,17 +85,20 @@ parula_cmap = LinearSegmentedColormap.from_list('parula', parula_colors, N=256)
 #parameters
 Lx = 32 * np.pi
 Nx = 256
-epsilon = 20 #vary to check against multiple schemes
+epsilon = 0.0426#vary to check against multiple schemes
 k_0 = 4
-T_f = 50
+T_f = 0.5
 omega = 2 * np.pi / Lx
 dealias = 3/2
 # start_sim_time = 2.98e5
 # stop_sim_time = sim_start_time + 2000
 start_sim_time = 0
-stop_sim_time = 10*T_f
+stop_sim_time = 500
 timestepper = d3.SBDF2
 timestep = 1e-2
+renorm_int = 50
+transient_steps = 400 // timestep
+lyapunov_sum = 0
 dtype = np.float64
 
 #bases
@@ -104,6 +108,7 @@ xbasis = d3.RealFourier(xcoord, size = Nx, bounds = (0, Lx), dealias = dealias)
 
 #fields
 u = dist.Field(name = 'u', bases = xbasis)
+du = dist.Field(name = 'du', bases = xbasis)
 
 #substitutions
 dx = lambda A: d3.Differentiate(A, xcoord)
@@ -118,10 +123,11 @@ t = dist.Field(name="t")
 pi = np.pi
 
 #problem
-problem = d3.IVP([u], time=t, namespace = locals())
-# problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x)")
+problem = d3.IVP([u, du], time=t, namespace = locals())
 problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * sin((2 * pi/T_f) * t)")
-#for now keep forcing constant in time...change after
+#perturbation equation
+problem.add_equation("dt(du) + dx(dx(dx(dx(du)))) + dx(dx(du)) = -dx(u)*du - dx(du) * u")
+
 
 
 #initial condition
@@ -134,52 +140,95 @@ k = np.fft.rfftfreq(Nx, Lx / (2 * np.pi))
 S = alpha * g * g * k ** 5 * np.exp(-beta * (k * w_0) ** 4)
 u_0_hat = np.exp(2 * np.pi * 1j * theta) * S
 u['g'] = np.fft.irfft(u_0_hat)
+du['g'] = np.random.standard_normal(du['g'].shape)
 
-#solver
-solver = problem.build_solver(timestepper)
-solver.stop_sim_time = stop_sim_time
+dx_grid = Lx / Nx
 
-#main loop
-u_list = [u['g', 1].copy()]
-t_list = [solver.sim_time]
-while solver.proceed:
-    solver.step(timestep)
-    if solver.iteration % 10000 == 0:
-        logger.info('Iteration=%i, Time=%e, dt=%e' %(solver.iteration, solver.sim_time, timestep))
-    if solver.iteration % 25 == 0:
-        u_list.append(u['g',1].copy())
-        t_list.append(solver.sim_time)
+def norm(vector):
+    return np.sqrt(np.sum(vector['g']**2) * dx_grid)
 
-df = pd.read_csv("T_f_50.csv", header=None)
-graph_data = df.to_numpy()
-# Plot
-x_grid = np.linspace(0, Lx, Nx, endpoint=False)
-# plt.figure(figsize=(8,4))
-# plt.pcolormesh(np.array(t_list), x_grid, np.array(u_list).T, cmap=parula_cmap, rasterized=True, clim=(-10, 10))
+d0 = 1.0
+scale = d0 / norm(du)
+du['g'][:] = du['g'] * scale
+
+if __name__ == "__main__":
+    try:
+        data = np.load(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={round(transient_steps * timestep)}.npz")
+        if input("File for this data already exists. Are you sure you want to re-run simulation? [y/n] ") == 'n':
+            sys.exit()
+    except FileNotFoundError:
+        print("running")
+        pass
+    #solver
+    solver = problem.build_solver(timestepper)
+    solver.stop_sim_time = stop_sim_time
+
+    #main loop
+    u_list = [u['g'][:Nx].copy()]
+    du_list = [du['g'][:Nx].copy()]
+    t_list = [solver.sim_time]
+    lyapunov_list = [0.0]
+    last_lyapunov = 0.0
+    while solver.proceed:
+        solver.step(timestep)
+        if solver.iteration % 10000 == 0:
+            logger.info('Iteration=%i, Time=%e, dt=%e' %(solver.iteration, solver.sim_time, timestep))
+        if solver.iteration % 5 == 0:
+            u_list.append(u['g'][:Nx].copy())
+            du_list.append(du['g'][:Nx].copy())
+            t_list.append(solver.sim_time)
+            lyapunov_list.append(last_lyapunov)
+        if solver.iteration % renorm_int == 0:
+            growth_factor = norm(du) / d0
+            inst_lambda = np.log(growth_factor) / (renorm_int * timestep)
+
+            if solver.iteration > transient_steps:
+                lyapunov_sum += inst_lambda
+                active_steps = solver.iteration - transient_steps
+                current_renorm_count = active_steps // renorm_int
+                if current_renorm_count != 0:
+                    last_lyapunov = (lyapunov_sum / current_renorm_count)
+                else:
+                    last_lyapunov = 0.0
+                # if solver.iteration % (renorm_int * 100) == 0:
+                #     print(f"Avg max lambda: {last_lyapunov:.5f}")
+            du['g'] /= growth_factor
+    # df = pd.read_csv("T_f_3.csv", header=None)
+    # graph_data = df.to_numpy()
+
+    np.savez(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={round(transient_steps * timestep)}", u=np.array(u_list), du=np.array(du_list), t=np.array(t_list), lyapunov=np.array(lyapunov_list))
+    print("Data generated.")
+# # Plot
+# x_grid = np.linspace(0, Lx, Nx, endpoint=False)
+# plt.figure(figsize=(3.73*4,0.66*4))
+# plt.pcolormesh(np.array(t_list), x_grid, np.array(u_list).T, cmap=parula_cmap, rasterized=True,)
 # plt.xlim(start_sim_time, stop_sim_time)
 # plt.ylim(0, Lx)
 # plt.xlabel('t')
 # plt.ylabel('x')
 # plt.title(f'fKSe, (epsilon,theta)=({epsilon},{theta})')
 # plt.tight_layout()
-plt.figure(figsize=(4, 4))
-u_last = np.asarray(u_list)[-1]
-x_vals = graph_data[:, 0]
-y_vals = graph_data[:, 1]
+# # plt.figure(figsize=(4, 4))
+# # u_last = np.asarray(u_list)[-1]
+# # x_vals = graph_data[:, 0]
+# # y_vals = graph_data[:, 1]
 
-n = min(len(u_last), len(x_vals), len(y_vals))
-u_last = u_last[:n]
-x_vals = x_vals[:n]
-y_vals = y_vals[:n]
+# # n = min(len(u_last), len(x_vals), len(y_vals))
+# # u_last = u_last[:n]
+# # x_vals = x_vals[:n]
+# # y_vals = y_vals[:n]
 
-# plt.plot(x_grid, np.array(u_list)[-1] - y_vals)
-print(f"Average error: {np.mean((np.array(u_list)[-1] - y_vals)):2f} ({np.abs(np.mean((np.array(u_list)[-1] - y_vals) * 100 / y_vals)):2f}%)")
-plt.plot(x_vals, y_vals, label='CSV data')
-plt.plot(x_vals, u_last, label='Simulation')
-plt.xlim(x_vals.min(), x_vals.max())
-plt.ylim(-10, 10)
-plt.xlabel('x')
-plt.ylabel('u(x,t)')
-plt.legend()
-plt.tight_layout()
-plt.show()
+# # plt.plot(x_grid, np.array(u_list)[-1] - y_vals)
+# # plt.plot(t_list, lyapunov_list)
+# # plt.xlabel('t')
+# # plt.ylabel("Average MLE")
+# # print(f"Average error: {np.mean((np.array(u_list)[-1] - y_vals)):2f} ({np.abs(np.mean((np.array(u_list)[-1] - y_vals) * 100 / y_vals)):2f}%)")
+# # plt.plot(x_vals, y_vals, label='CSV data')
+# # plt.plot(x_vals, u_last, label='Simulation')
+# # plt.xlim(x_vals.min(), x_vals.max())
+# # plt.ylim(-20, 20)
+# # plt.xlabel('x')
+# # plt.ylabel('u(x,t)')
+# # plt.legend()
+# # plt.tight_layout()
+# plt.show()
