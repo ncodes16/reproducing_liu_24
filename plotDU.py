@@ -23,6 +23,7 @@ du_list = data['du']
 x_grid = np.linspace(0, Lx, Nx, endpoint=False)
 plt.figure(figsize=(6,4))
 plt.pcolormesh(np.array(t_list), x_grid, np.array(du_list).T, cmap=parula_cmap, rasterized=True,)
+colorbar = plt.colorbar()
 plt.xlim(start_sim_time, stop_sim_time)
 plt.ylim(0, Lx)
 plt.xlabel('t')

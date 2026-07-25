@@ -4,12 +4,12 @@ import matplotlib.pyplot as plt
 from ks_liu2024 import Lx, Nx, parula_cmap, start_sim_time
 
 stop_sim_time = 500
-epsilon = 0.0426
+epsilon = 0.21
 seed = 1
 rng = np.random.default_rng(seed=seed)
 theta = rng.uniform()
 transient_time = 400
-T_f = 0.5
+T_f = 70
 
 #load data
 try:
@@ -27,6 +27,7 @@ u_list = data['u']
 x_grid = np.linspace(0, Lx, Nx, endpoint=False)
 plt.figure(figsize=(6,4))
 plt.pcolormesh(np.array(t_list), x_grid, np.array(u_list).T, cmap=parula_cmap, rasterized=True,)
+colorbar = plt.colorbar()
 plt.xlim(start_sim_time, stop_sim_time)
 plt.ylim(0, Lx)
 plt.xlabel('t')

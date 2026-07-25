@@ -87,17 +87,18 @@ Lx = 32 * np.pi
 Nx = 256
 epsilon = 0.0426#vary to check against multiple schemes
 k_0 = 4
-T_f = 0.5
+T_f = 10
+T_f_2 = np.sqrt(2) * 10
 omega = 2 * np.pi / Lx
 dealias = 3/2
 # start_sim_time = 2.98e5
 # stop_sim_time = sim_start_time + 2000
 start_sim_time = 0
-stop_sim_time = 500
+stop_sim_time =2000
 timestepper = d3.SBDF2
 timestep = 1e-2
 renorm_int = 50
-transient_steps = 400 // timestep
+transient_steps = 99 // timestep
 lyapunov_sum = 0
 dtype = np.float64
 
@@ -124,7 +125,8 @@ pi = np.pi
 
 #problem
 problem = d3.IVP([u, du], time=t, namespace = locals())
-problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * sin((2 * pi/T_f) * t)")
+problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t))")
+# problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t) + sin((2 * pi/T_f_2) * t))")
 #perturbation equation
 problem.add_equation("dt(du) + dx(dx(dx(dx(du)))) + dx(dx(du)) = -dx(u)*du - dx(du) * u")
 
@@ -157,7 +159,6 @@ if __name__ == "__main__":
         if input("File for this data already exists. Are you sure you want to re-run simulation? [y/n] ") == 'n':
             sys.exit()
     except FileNotFoundError:
-        print("running")
         pass
     #solver
     solver = problem.build_solver(timestepper)
@@ -168,7 +169,9 @@ if __name__ == "__main__":
     du_list = [du['g'][:Nx].copy()]
     t_list = [solver.sim_time]
     lyapunov_list = [0.0]
+    lyapunov_inst_list = [0.0]
     last_lyapunov = 0.0
+    inst_lambda = 0.0
     while solver.proceed:
         solver.step(timestep)
         if solver.iteration % 10000 == 0:
@@ -178,6 +181,7 @@ if __name__ == "__main__":
             du_list.append(du['g'][:Nx].copy())
             t_list.append(solver.sim_time)
             lyapunov_list.append(last_lyapunov)
+            lyapunov_inst_list.append(inst_lambda)
         if solver.iteration % renorm_int == 0:
             growth_factor = norm(du) / d0
             inst_lambda = np.log(growth_factor) / (renorm_int * timestep)
@@ -196,7 +200,7 @@ if __name__ == "__main__":
     # df = pd.read_csv("T_f_3.csv", header=None)
     # graph_data = df.to_numpy()
 
-    np.savez(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={round(transient_steps * timestep)}", u=np.array(u_list), du=np.array(du_list), t=np.array(t_list), lyapunov=np.array(lyapunov_list))
+    np.savez_compressed(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={round(transient_steps * timestep)}", u=np.array(u_list), du=np.array(du_list), t=np.array(t_list), lyapunov=np.array(lyapunov_list))
     print("Data generated.")
 # # Plot
 # x_grid = np.linspace(0, Lx, Nx, endpoint=False)

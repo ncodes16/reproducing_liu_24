@@ -7,6 +7,7 @@ settings.json
 # C extensions
 *.so
 
+runs/data_seed=1_epsilon=0.21_Tf=70_simtime=2000_transInt=400.npz
 # Distribution / packaging
 .Python
 build/
