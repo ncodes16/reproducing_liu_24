@@ -3,12 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 stop_sim_time = 500
-epsilon = 0.21
+epsilon = 0.0426
 seed = 1
 rng = np.random.default_rng(seed=seed)
 theta = rng.uniform()
 transient_time = 100
-T_f = 10
+T_f = 0.5
 
 #load data
 try:
@@ -23,12 +23,12 @@ t_list = data['t']
 lyapunov_list = data['lyapunov']
 
 stop_sim_time_2 = 500
-epsilon_2 = 0.21
+epsilon_2 = 0.0426
 seed_2 = 1
 rng_2 = np.random.default_rng(seed=seed)
 theta_2 = rng.uniform()
-transient_time_2 = 99
-T_f_2 = 10
+transient_time_2 = 100
+T_f_2 = 1
 
 #load data
 try:
