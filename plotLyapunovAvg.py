@@ -8,7 +8,7 @@ seed = 1
 rng = np.random.default_rng(seed=seed)
 theta = rng.uniform()
 transient_time = 400
-T_f = 70
+T_f = 10
 
 #load data
 try:

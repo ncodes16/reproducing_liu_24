@@ -87,18 +87,18 @@ Lx = 32 * np.pi
 Nx = 256
 epsilon = 0.0426#vary to check against multiple schemes
 k_0 = 4
-T_f = 10
-T_f_2 = np.sqrt(2) * 10
+T_f = 0.5
+T_f_2 = np.sqrt(2) * 0.5
 omega = 2 * np.pi / Lx
 dealias = 3/2
 # start_sim_time = 2.98e5
 # stop_sim_time = sim_start_time + 2000
 start_sim_time = 0
-stop_sim_time =2000
+stop_sim_time = 35
 timestepper = d3.SBDF2
 timestep = 1e-2
 renorm_int = 50
-transient_steps = 99 // timestep
+transient_steps = 9 // timestep
 lyapunov_sum = 0
 dtype = np.float64
 
@@ -125,8 +125,8 @@ pi = np.pi
 
 #problem
 problem = d3.IVP([u, du], time=t, namespace = locals())
-problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t))")
-# problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t) + sin((2 * pi/T_f_2) * t))")
+# problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t))")
+problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t) + sin((2 * pi/T_f_2) * t))")
 #perturbation equation
 problem.add_equation("dt(du) + dx(dx(dx(dx(du)))) + dx(dx(du)) = -dx(u)*du - dx(du) * u")
 
