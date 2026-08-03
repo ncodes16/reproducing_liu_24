@@ -3,6 +3,7 @@ __pycache__/
 *.py[codz]
 *$py.class
 settings.json
+launch.json
 
 # C extensions
 *.so

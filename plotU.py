@@ -1,26 +1,22 @@
-import sys
+from load_data import load, load_parameters
 import numpy as np
 import matplotlib.pyplot as plt
 from ks_liu2024 import Lx, Nx, parula_cmap, start_sim_time
 
-stop_sim_time = 500
-epsilon = 0.21
-seed = 1
+# quasi = True
+# stop_sim_time = 105
+# epsilon = 0.0426
+# seed = 1
+# transient_time = 11
+# T_f = 0.5
+
+quasi, seed, epsilon, T_f, stop_sim_time, transient_time, path = load_parameters()
+
 rng = np.random.default_rng(seed=seed)
 theta = rng.uniform()
-transient_time = 400
-T_f = 70
 
 #load data
-try:
-    data = np.load(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={transient_time}.npz")
-except FileNotFoundError:
-    print("Data with these parameters does not exist. Go run the simulation on ks_liu2024.py to create it.")
-    # print(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={transient_time}")
-    sys.exit()
-except OSError, ValueError:
-    print("Data corrupted. Go run the simulation on ks_liu2024.py to repair it.")
-    sys.exit()
+data = load(quasi, seed, epsilon, T_f, stop_sim_time, transient_time)
 t_list = data['t']
 u_list = data['u']
 
@@ -32,6 +28,9 @@ plt.xlim(start_sim_time, stop_sim_time)
 plt.ylim(0, Lx)
 plt.xlabel('t')
 plt.ylabel('x')
-plt.title(f'fKSe, (epsilon,theta)=({epsilon},{theta})')
+forcing_type = 'Periodic' if not quasi else 'Quasi-Periodic'
+plt.title(f'{forcing_type} fKSe, epsilon = {epsilon}, T_f = {T_f}')
 plt.tight_layout()
-plt.show()
+
+plt.savefig(f"{path}/{"quasi.png" if quasi else "periodic.png"}")
+plt.close()

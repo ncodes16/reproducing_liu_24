@@ -1,24 +1,20 @@
-import sys
+from load_data import load, load_parameters
 import numpy as np
 import matplotlib.pyplot as plt
 
-stop_sim_time = 500
-epsilon = 0.0426
-seed = 1
+# quasi = True
+# stop_sim_time = 500
+# epsilon = 0.0426
+# seed = 1
+# transient_time = 100
+# T_f = 0.5
+
+quasi, seed, epsilon, T_f, stop_sim_time, transient_time, path = load_parameters()
 rng = np.random.default_rng(seed=seed)
 theta = rng.uniform()
-transient_time = 100
-T_f = 0.5
 
 #load data
-try:
-    data = np.load(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={transient_time}.npz")
-except FileNotFoundError:
-    print("Data with these parameters does not exist. Go run the simulation on ks_liu2024.py to create it.")
-    sys.exit()
-except OSError, ValueError:
-    print("Data corrupted. Go run the simulation on ks_liu2024.py to repair it.")
-    sys.exit()
+data = load(quasi, seed, epsilon, T_f, stop_sim_time, transient_time)
 t_list = data['t']
 lyapunov_inst_list = data['lyapunov_inst']
 

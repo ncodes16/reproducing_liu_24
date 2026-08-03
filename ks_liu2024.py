@@ -3,13 +3,14 @@ import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 from matplotlib.colors import LinearSegmentedColormap
 import dedalus.public as d3
 import logging
+from load_data import load_parameters
 logger = logging.getLogger(__name__)
 
-seed = 1
-rng = np.random.default_rng(seed=seed)
+# seed = 1
 
 # Official Parula colormap RGB values
 parula_colors = [
@@ -85,77 +86,87 @@ parula_cmap = LinearSegmentedColormap.from_list('parula', parula_colors, N=256)
 #parameters
 Lx = 32 * np.pi
 Nx = 256
-epsilon = 0.0426#vary to check against multiple schemes
-k_0 = 4
-T_f = 0.5
-T_f_2 = np.sqrt(2) * 0.5
-omega = 2 * np.pi / Lx
-dealias = 3/2
-# start_sim_time = 2.98e5
-# stop_sim_time = sim_start_time + 2000
-start_sim_time = 0
-stop_sim_time = 35
-timestepper = d3.SBDF2
-timestep = 1e-2
-renorm_int = 50
-transient_steps = 9 // timestep
-lyapunov_sum = 0
-dtype = np.float64
+start_sim_time = 70
+if __name__ == '__main__':
+    quasi_periodic, seed, epsilon, T_f, stop_sim_time, transient_time = load_parameters()
+    rng = np.random.default_rng(seed=seed)
+    # epsilon = 0.0426#vary to check against multiple schemes
+    # quasi_periodic = False
+    k_0 = 4
+    # T_f = 0.5
+    T_f_2 = np.sqrt(2) * T_f
+    omega = 2 * np.pi / Lx
+    dealias = 3/2
+    # start_sim_time = 2.98e5
+    # stop_sim_time = sim_start_time + 2000
+    # stop_sim_time = 105
+    timestepper = d3.SBDF2
+    timestep = 1e-2
+    renorm_int = 50
+    transient_steps = transient_time // timestep
+    lyapunov_sum = 0
+    dtype = np.float64
 
-#bases
-xcoord = d3.Coordinate('x')
-dist = d3.Distributor(xcoord, dtype=dtype)
-xbasis = d3.RealFourier(xcoord, size = Nx, bounds = (0, Lx), dealias = dealias)
+    #bases
+    xcoord = d3.Coordinate('x')
+    dist = d3.Distributor(xcoord, dtype=dtype)
+    xbasis = d3.RealFourier(xcoord, size = Nx, bounds = (0, Lx), dealias = dealias)
 
-#fields
-u = dist.Field(name = 'u', bases = xbasis)
-du = dist.Field(name = 'du', bases = xbasis)
+    #fields
+    u = dist.Field(name = 'u', bases = xbasis)
+    du = dist.Field(name = 'du', bases = xbasis)
 
-#substitutions
-dx = lambda A: d3.Differentiate(A, xcoord)
+    #substitutions
+    dx = lambda A: d3.Differentiate(A, xcoord)
 
-# Create x as a Field for use in equations
-x = dist.Field(bases=xbasis)
-x['g'] = dist.local_grid(xbasis)
-t = dist.Field(name="t")
-
-
-# Make pi available for equations
-pi = np.pi
-
-#problem
-problem = d3.IVP([u, du], time=t, namespace = locals())
-# problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t))")
-problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t) + sin((2 * pi/T_f_2) * t))")
-#perturbation equation
-problem.add_equation("dt(du) + dx(dx(dx(dx(du)))) + dx(dx(du)) = -dx(u)*du - dx(du) * u")
+    # Create x as a Field for use in equations
+    x = dist.Field(bases=xbasis)
+    x['g'] = dist.local_grid(xbasis)
+    t = dist.Field(name="t")
 
 
+    # Make pi available for equations
+    pi = np.pi
 
-#initial condition
-alpha = 8.1e-3
-beta = 0.74
-g = 9.8
-w_0 = g / 16
-theta = rng.uniform()
-k = np.fft.rfftfreq(Nx, Lx / (2 * np.pi))
-S = alpha * g * g * k ** 5 * np.exp(-beta * (k * w_0) ** 4)
-u_0_hat = np.exp(2 * np.pi * 1j * theta) * S
-u['g'] = np.fft.irfft(u_0_hat)
-du['g'] = np.random.standard_normal(du['g'].shape)
+    #problem
+    problem = d3.IVP([u, du], time=t, namespace = locals())
+    if quasi_periodic:
+        problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t) + sin((2 * pi/T_f_2) * t))")
+    else:
+        problem.add_equation("dt(u) + dx(dx(u)) + dx(dx(dx(dx(u)))) = -u * dx(u) + epsilon * sin(k_0 * omega * x) * (sin((2 * pi/T_f) * t))")
 
-dx_grid = Lx / Nx
+    #perturbation equation
+    problem.add_equation("dt(du) + dx(dx(dx(dx(du)))) + dx(dx(du)) = -dx(u)*du - dx(du) * u")
 
-def norm(vector):
-    return np.sqrt(np.sum(vector['g']**2) * dx_grid)
 
-d0 = 1.0
-scale = d0 / norm(du)
-du['g'][:] = du['g'] * scale
 
-if __name__ == "__main__":
+    #initial condition
+    alpha = 8.1e-3
+    beta = 0.74
+    g = 9.8
+    w_0 = g / 16
+    theta = rng.uniform()
+    k = np.fft.fftfreq(Nx, Lx / (2 * np.pi))
+    S = alpha * g * g * k ** 5 * np.exp(-beta * (k * w_0) ** 4)
+    u_0_hat = np.exp(2 * np.pi * 1j * theta) * S
+    u['g'] = np.fft.ifft(u_0_hat).real
+    du['g'] = np.random.standard_normal(du['g'].shape)
+
+    dx_grid = Lx / Nx
+
+    def norm(vector):
+        return np.sqrt(np.sum(vector['g']**2) * dx_grid)
+
+    d0 = 1.0
+    scale = d0 / norm(du)
+    du['g'][:] = du['g'] * scale
+
+
+    runs_dir = Path(__file__).resolve().parent / "runs"
+    runs_dir.mkdir(exist_ok=True)
+    out_path = runs_dir / f"QP={quasi_periodic}_data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={round(transient_steps * timestep)}.npz"
     try:
-        data = np.load(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={round(transient_steps * timestep)}.npz")
+        np.load(out_path)
         if input("File for this data already exists. Are you sure you want to re-run simulation? [y/n] ") == 'n':
             sys.exit()
     except FileNotFoundError:
@@ -200,7 +211,7 @@ if __name__ == "__main__":
     # df = pd.read_csv("T_f_3.csv", header=None)
     # graph_data = df.to_numpy()
 
-    np.savez_compressed(f"runs/data_seed={seed}_epsilon={epsilon}_Tf={T_f}_simtime={stop_sim_time}_transInt={round(transient_steps * timestep)}", u=np.array(u_list), du=np.array(du_list), t=np.array(t_list), lyapunov=np.array(lyapunov_list))
+    np.savez_compressed(out_path, u=np.array(u_list), du=np.array(du_list), t=np.array(t_list), lyapunov=np.array(lyapunov_list))
     print("Data generated.")
 # # Plot
 # x_grid = np.linspace(0, Lx, Nx, endpoint=False)
